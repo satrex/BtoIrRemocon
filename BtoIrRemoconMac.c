@@ -107,7 +107,7 @@ IOReturn WriteToDevice(IOHIDDeviceRef dev, unsigned char *data, size_t len)
 {
     IOReturn ret = IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, data[0], data+1, len-1);
     if (ret != kIOReturnSuccess) {
-        //printf("WriteToDevice: ret=0x%08X\n", ret);
+        printf("WriteToDevice: ret=0x%08X\n", ret);
     }
     return ret;
 }
@@ -238,7 +238,8 @@ int main(int ac, char *av[])
 {
     int vid, myVID = 0x22ea; // BTO IR REMOCON のベンダ ID
     int pid, myPID = 0x001e; // BTO IR REMOCON のプロダクト ID
-    int i, sts = -1;
+    int i, j, sts = -1;
+    int tryCount = 3; // デバイス走査回数
     IOReturn ret;
     unsigned char buf[65];
     Boolean doDisplay = false;
@@ -265,42 +266,51 @@ int main(int ac, char *av[])
     prefDevs = malloc(numDevices * sizeof(IOHIDDeviceRef));
     // セットから値を取得
     CFSetGetValues(refDevSet, (const void **)prefDevs);
-    
-    // HID デバイス群を走査して BTO IR REMOCON を探す
-    for (i = 0; i < numDevices; i++) {
-        refDevice = prefDevs[i];
-        // VID, PID をチェック
-        vid = getIntProperty(refDevice, CFSTR(kIOHIDVendorIDKey)); 
-        pid = getIntProperty(refDevice, CFSTR(kIOHIDProductIDKey));
-        if (vid != myVID || pid != myPID) {
-            refDevice = NULL;
-            continue;
-        }
-        // デバイスのオープン
-        ret = IOHIDDeviceOpen(refDevice, kIOHIDOptionsTypeNone);    
-        if (ret != kIOReturnSuccess) {
-            refDevice = NULL;
-            continue;
-        }
-        // 試し打ち
-        memset(buf, 0xFF, sizeof(buf));
-        buf[0] = 0x00;
-        buf[1] = 0x40;
-        if (WriteToDevice(refDevice, buf, DEVICE_BUFSIZE) == kIOReturnSuccess) {
-            memset(buf, 0, sizeof(buf));
-            int bytes = ReadFromeDevice(refDevice, buf, DEVICE_BUFSIZE, 0.5);
-            if (bytes >= 0 && buf[1] == 0x40) {
-                break; // OK
+
+    // 失敗時リトライ
+    for(j = 0; j < tryCount; j++ )
+    {
+        // HID デバイス群を走査して BTO IR REMOCON を探す
+        for (i = 0; i < numDevices; i++) {
+            refDevice = prefDevs[i];
+            // VID, PID をチェック
+            vid = getIntProperty(refDevice, CFSTR(kIOHIDVendorIDKey)); 
+            pid = getIntProperty(refDevice, CFSTR(kIOHIDProductIDKey));
+            if (vid != myVID || pid != myPID) {
+                refDevice = NULL;
+                continue;
             }
+            // デバイスのオープン
+            ret = IOHIDDeviceOpen(refDevice, kIOHIDOptionsTypeNone);    
+            if (ret != kIOReturnSuccess) {
+                refDevice = NULL;
+                continue;
+            }
+            // 試し打ち
+            memset(buf, 0xFF, sizeof(buf));
+            buf[0] = 0x00;
+            buf[1] = 0x40;
+
+            if (WriteToDevice(refDevice, buf, DEVICE_BUFSIZE) == kIOReturnSuccess) {
+                memset(buf, 0, sizeof(buf));
+                int bytes = ReadFromeDevice(refDevice, buf, DEVICE_BUFSIZE, 0.5);
+                if (bytes >= 0 && buf[1] == 0x40) {
+                    break; // OK
+                }
+            }
+            else
+            {
+                fprintf(stderr, "Failed to write device.");
+            }
+            IOHIDDeviceClose(refDevice, kIOHIDOptionsTypeNone);
+            refDevice = NULL;
         }
-        IOHIDDeviceClose(refDevice, kIOHIDOptionsTypeNone);
-        refDevice = NULL;
+        if (!refDevice) {
+            fprintf(stderr, "device not found\n");
+            goto DONE;
+        }
     }
-    if (!refDevice) {
-        fprintf(stderr, "device not found\n");
-        goto DONE;
-    }
-    
+   
     if (doDisplay) {
         sts = Display(refDevice); // 受信モードへ
     } else {
