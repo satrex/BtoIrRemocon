@@ -107,7 +107,7 @@ IOReturn WriteToDevice(IOHIDDeviceRef dev, unsigned char *data, size_t len)
 {
     IOReturn ret = IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, data[0], data+1, len-1);
     if (ret != kIOReturnSuccess) {
-        printf("WriteToDevice: ret=0x%08X\n", ret);
+        // printf("WriteToDevice: ret=0x%08X\n", ret);
     }
     return ret;
 }
@@ -297,10 +297,6 @@ int main(int ac, char *av[])
                 if (bytes >= 0 && buf[1] == 0x40) {
                     break; // OK
                 }
-            }
-            else
-            {
-                fprintf(stderr, "Failed to write device.");
             }
             IOHIDDeviceClose(refDevice, kIOHIDOptionsTypeNone);
             refDevice = NULL;
